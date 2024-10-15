@@ -1,16 +1,22 @@
 import express from "express";
 import bodyParser from "express";
 import {Readable} from "stream";
+import fetch from "node-fetch";
 import {ReadableStream} from "stream/web";
 
 const app = express();
 
 app.use(function (req, res, next) {
-  if (!req.get("keep-headers")) {
-    req.headers = {};
+  req.new_headers = {};
+  if (!req.get("headers") || req.get("keep-headers")) {
+    for (const [name, value] of Object.entries(req.headers)) {
+      if (!name.startsWith("x-") && name !== "host" && name !== "accept-encoding") {
+        req.new_headers[name] = value;
+      }
+    }
   }
   if (req.get("headers")) {
-    Object.assign(req.headers, JSON.parse(req.get("headers")));
+    Object.assign(req.new_headers, JSON.parse(req.get("headers")));
   }
   next();
 });
@@ -50,12 +56,10 @@ app.all("/:method(\\w*)/:url([\\w\\W]*)", async (req, res) => {
   }
   const url = Object.keys(req.query).length
       ? `${req.params.url}?${new URLSearchParams(req.query)}` : req.params.url;
+  console.log(req.new_headers);
   const response = await fetch(url, {
     method: req.params.method || req.method,
-    headers: {
-      ...req.headers,
-      host: new URL(url).host
-    },
+    headers: req.new_headers,
     body: body
   });
   const responseTransform = req.get("response-transform");
