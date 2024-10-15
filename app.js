@@ -6,41 +6,11 @@ import {ReadableStream} from "stream/web";
 const app = express();
 
 app.use(function (req, res, next) {
-  if (!req.query["keep-headers"]) {
+  if (!req.get("keep-headers")) {
     req.headers = {};
   }
-  if (req.query.headers) {
-    if (typeof req.query.headers === "string") {
-      Object.assign(req.headers, JSON.parse(req.query.headers));
-    } else {
-      const headers = {};
-      for (const str of req.query.headers) {
-        for (const [key, value] of Object.keys(JSON.parse(str))) {
-          if (headers.hasOwnProperty(key.toLowerCase())) {
-            headers[key.toLowerCase()] += `${
-                key.toLowerCase() === "cookie" ? ";" : ","
-            } ${value}`;
-          } else {
-            headers[key.toLowerCase()] = value;
-          }
-        }
-      }
-      Object.assign(req.headers, headers);
-    }
-  } else {
-    if (typeof req.query.url === "string") {
-      req.headers.host = new URL(req.query.url).host;
-    } else {
-      req.headers.host = new URL(req.query.url[0]).host;
-    }
-  }
-  const contentType = req.query["content-type"];
-  if (contentType) {
-    if (typeof contentType === "string") {
-      req.headers["content-type"] = contentType;
-    } else {
-      req.headers["content-type"] = contentType[0];
-    }
+  if (req.get("headers")) {
+    Object.assign(req.headers, JSON.parse(req.get("headers")));
   }
   next();
 });
@@ -50,9 +20,8 @@ app.use(bodyParser.raw());
 app.use(bodyParser.text());
 app.use(bodyParser.urlencoded({extended: true}));
 
-app.all("/:method?", async (req, res) => {
-  const requestTransform = req.query["request-transform"] ?? req.get(
-      "request-transform");
+app.all("/:method(\\w*)/:url([\\w\\W]*)", async (req, res) => {
+  const requestTransform = req.get("request-transform");
   if (requestTransform) {
     if (typeof requestTransform === "string") {
       eval(requestTransform);
@@ -79,15 +48,17 @@ app.all("/:method?", async (req, res) => {
         body = String(req.body);
     }
   }
-  const response = await fetch(req.query.url, {
+  const url = Object.keys(req.query).length
+      ? `${req.params.url}?${new URLSearchParams(req.query)}` : req.params.url;
+  const response = await fetch(url, {
     method: req.params.method || req.method,
     headers: {
-      ...req.headers
+      ...req.headers,
+      host: new URL(url).host
     },
     body: body
   });
-  const responseTransform = req.query["response-transform"] ?? req.get(
-      "response-transform");
+  const responseTransform = req.get("response-transform");
   if (responseTransform) {
     if (typeof responseTransform === "string") {
       eval(responseTransform);
